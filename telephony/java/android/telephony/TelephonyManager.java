@@ -13333,7 +13333,8 @@ public class TelephonyManager {
             if (service != null) {
                 return service.isDataEnabledForReason(subId, reason);
             } else {
-                throw new IllegalStateException("telephony service is null.");
+                Log.d(TAG, "telephony service is null.");
+                return false;
             }
         } catch (RemoteException ex) {
             Log.e(TAG, "Telephony#isDataEnabledForReason RemoteException", ex);
