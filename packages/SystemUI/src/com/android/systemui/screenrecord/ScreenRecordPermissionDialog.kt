@@ -64,7 +64,6 @@ class ScreenRecordPermissionDialog(
     private lateinit var stopDotSwitch: Switch
     private lateinit var lowQualitySwitch: Switch
     private lateinit var longerDurationSwitch: Switch
-    private lateinit var skipTimeSwitch: Switch
     private lateinit var hevcSwitch: Switch
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,7 +106,6 @@ class ScreenRecordPermissionDialog(
     private fun initRecordOptionsView() {
         audioSwitch = findViewById(R.id.screenrecord_audio_switch)
         tapsSwitch = findViewById(R.id.screenrecord_taps_switch)
-        skipTimeSwitch = findViewById(R.id.screenrecord_skip_time_switch)
         tapsView = findViewById(R.id.show_taps)
         updateTapsViewVisibility()
         options = findViewById(R.id.screen_recording_options)
@@ -130,7 +128,6 @@ class ScreenRecordPermissionDialog(
         longerDurationSwitch.isChecked = Prefs.getInt(userContext, PREF_LONGER, 0) == 1
         audioSwitch.isChecked = Prefs.getInt(userContext, PREF_AUDIO, 0) == 1
         options.setSelection(Prefs.getInt(userContext, PREF_AUDIO_SOURCE, 0))
-        skipTimeSwitch.isChecked = Prefs.getInt(userContext, PREF_SKIP, 0) == 1
         hevcSwitch.isChecked = Prefs.getInt(userContext, PREF_HEVC, 1) == 1
     }
 
@@ -159,7 +156,6 @@ class ScreenRecordPermissionDialog(
         val lowQuality = lowQualitySwitch.isChecked
         val longerDuration = longerDurationSwitch.isChecked
         val hevc = hevcSwitch.isChecked
-        val skipTime = skipTimeSwitch.isChecked
         val startIntent =
             PendingIntent.getForegroundService(
                 userContext,
@@ -191,11 +187,9 @@ class ScreenRecordPermissionDialog(
         Prefs.putInt(userContext, PREF_LONGER, if (longerDuration) 1 else 0)
         Prefs.putInt(userContext, PREF_AUDIO, if (audioSwitch.isChecked) 1 else 0)
         Prefs.putInt(userContext, PREF_AUDIO_SOURCE, options.selectedItemPosition)
-        Prefs.putInt(userContext, PREF_SKIP, if (skipTime) 1 else 0)
         Prefs.putInt(userContext, PREF_HEVC, if (hevc) 1 else 0)
 
-        controller.startCountdown(if (skipTime) NO_DELAY else DELAY_MS,
-                                                    INTERVAL_MS, startIntent, stopIntent)
+        controller.startCountdown(DELAY_MS, INTERVAL_MS, startIntent, stopIntent)
     }
 
     private inner class CaptureTargetResultReceiver() :
@@ -222,7 +216,6 @@ class ScreenRecordPermissionDialog(
                 ScreenRecordingAudioSource.MIC_AND_INTERNAL
             )
         private const val DELAY_MS: Long = 3000
-        private const val NO_DELAY: Long = 100
         private const val INTERVAL_MS: Long = 1000
 
         private const val PREF_TAPS = "screenrecord_show_taps"
@@ -232,7 +225,6 @@ class ScreenRecordPermissionDialog(
         private const val PREF_HEVC = "screenrecord_use_hevc"
         private const val PREF_AUDIO = "screenrecord_use_audio"
         private const val PREF_AUDIO_SOURCE = "screenrecord_audio_source"
-        private const val PREF_SKIP = "screenrecord_skip_timer"
 
         private fun createOptionList(): List<ScreenShareOption> {
             return listOf(
