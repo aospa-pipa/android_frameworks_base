@@ -28,7 +28,6 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.graphics.PixelFormat;
 import android.graphics.drawable.Icon;
 import android.media.MediaRecorder;
 import android.net.Uri;
@@ -39,14 +38,6 @@ import android.os.RemoteException;
 import android.os.UserHandle;
 import android.provider.Settings;
 import android.util.Log;
-import android.view.animation.AlphaAnimation;
-import android.view.animation.Animation;
-import android.view.Gravity;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.WindowManager;
-import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.Toast;
 
 import com.android.internal.annotations.VisibleForTesting;
@@ -83,8 +74,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
     private static final String EXTRA_AUDIO_SOURCE = "extra_useAudio";
     private static final String EXTRA_SHOW_TAPS = "extra_showTaps";
     private static final String EXTRA_CAPTURE_TARGET = "extra_captureTarget";
-    private static final String EXTRA_SHOW_STOP_DOT = "extra_showStopDot";
-    private static final String EXTRA_LOW_QUALITY = "extra_lowQuality";
     private static final String EXTRA_LONGER_DURATION = "extra_longerDuration";
     private final static String EXTRA_HEVC = "extra_HEVC";
 
@@ -111,14 +100,8 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
     private final NotificationManager mNotificationManager;
     private final UserContextProvider mUserContextTracker;
 
-    private boolean mLowQuality;
     private boolean mLongerDuration;
     private boolean mHEVC;
-    private boolean mShowStopDot;
-    private boolean mIsDotAtRight;
-    private boolean mDotShowing;
-    private FrameLayout mFrameLayout;
-    private WindowManager mWindowManager;
 
     @Inject
     public RecordingService(RecordingController controller, @LongRunning Executor executor,
@@ -131,8 +114,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
         mUiEventLogger = uiEventLogger;
         mNotificationManager = notificationManager;
         mUserContextTracker = userContextTracker;
-        mWindowManager = (WindowManager) userContextTracker.getUserContext()
-                .getSystemService(Context.WINDOW_SERVICE);
         mKeyguardDismissUtil = keyguardDismissUtil;
         mBinder = new RecordingServiceBinder();
     }
@@ -152,20 +133,19 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
     public static Intent getStartIntent(Context context, int resultCode,
             int audioSource, boolean showTaps,
             @Nullable MediaProjectionCaptureTarget captureTarget,
-            boolean showStopDot, boolean lowQuality, boolean longerDuration, boolean hevc) {
+            boolean longerDuration, boolean hevc) {
         return new Intent(context, RecordingService.class)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_RESULT_CODE, resultCode)
                 .putExtra(EXTRA_AUDIO_SOURCE, audioSource)
                 .putExtra(EXTRA_SHOW_TAPS, showTaps)
                 .putExtra(EXTRA_CAPTURE_TARGET, captureTarget)
-                .putExtra(EXTRA_SHOW_STOP_DOT, showStopDot)
-                .putExtra(EXTRA_LOW_QUALITY, lowQuality)
                 .putExtra(EXTRA_LONGER_DURATION, longerDuration)
                 .putExtra(EXTRA_HEVC, hevc);
     }
 
-    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) {
             return Service.START_NOT_STICKY;
         }
@@ -180,8 +160,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
                         .values()[intent.getIntExtra(EXTRA_AUDIO_SOURCE, 0)];
                 Log.d(TAG, "recording with audio source" + mAudioSource);
                 mShowTaps = intent.getBooleanExtra(EXTRA_SHOW_TAPS, false);
-                mShowStopDot = intent.getBooleanExtra(EXTRA_SHOW_STOP_DOT, false);
-                mLowQuality = intent.getBooleanExtra(EXTRA_LOW_QUALITY, false);
                 mLongerDuration = intent.getBooleanExtra(EXTRA_LONGER_DURATION, false);
                 mHEVC = intent.getBooleanExtra(EXTRA_HEVC, true);
 
@@ -194,7 +172,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
                         Settings.System.SHOW_TOUCHES, 0) != 0;
 
                 setTapsVisible(mShowTaps);
-                setStopDotVisible(mShowStopDot);
 
                 mRecorder = new ScreenMediaRecorder(
                         mUserContextTracker.getUserContext(),
@@ -204,7 +181,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
                         captureTarget,
                         this
                 );
-                setLowQuality(mLowQuality);
                 setLongerDuration(mLongerDuration);
                 setHEVC(mHEVC);
 
@@ -487,7 +463,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
         }
         Log.d(TAG, "notifying for user " + userId);
         setTapsVisible(mOriginalShowTaps);
-        setStopDotVisible(false);
         if (getRecorder() != null) {
             try {
                 getRecorder().end();
@@ -540,12 +515,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
         Settings.System.putInt(getContentResolver(), Settings.System.SHOW_TOUCHES, value);
     }
 
-    private void setLowQuality(boolean turnOn) {
-        if (getRecorder() != null) {
-            getRecorder().setLowQuality(turnOn);
-        }
-    }
-
     private void setLongerDuration(boolean longer) {
         if (getRecorder() != null) {
             getRecorder().setLongerDuration(longer);
@@ -556,87 +525,6 @@ public class RecordingService extends Service implements ScreenMediaRecorderList
         if (getRecorder() != null) {
             getRecorder().setHEVC(hevc);
         }
-    }
-
-    private void setStopDotVisible(boolean turnOn) {
-        if (turnOn) {
-            showDot();
-        } else if (mDotShowing) {
-            stopDot();
-        }
-    }
-
-    private void showDot() {
-        mDotShowing = true;
-        mIsDotAtRight = Prefs.getInt(this, PREF_DOT_RIGHT, 1) == 1;
-        final int size = (int) (this.getResources()
-                .getDimensionPixelSize(R.dimen.screenrecord_dot_size));
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE // don't get softkey inputs
-                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, // allow outside inputs
-                PixelFormat.TRANSLUCENT);
-        params.gravity = Gravity.TOP | (mIsDotAtRight ? Gravity.RIGHT : Gravity.LEFT);
-        params.width = size;
-        params.height = size;
-
-        mFrameLayout = new FrameLayout(this);
-
-        mWindowManager.addView(mFrameLayout, params);
-        final LayoutInflater inflater =
-                (LayoutInflater) mUserContextTracker.getUserContext()
-                .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-        inflater.inflate(R.layout.screenrecord_dot, mFrameLayout);
-
-        final ImageView dot = (ImageView) mFrameLayout.findViewById(R.id.dot);
-        dot.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                try {
-                    getStopPendingIntent().send();
-                } catch (PendingIntent.CanceledException e) {}
-            }
-        });
-
-        dot.setOnLongClickListener(new View.OnLongClickListener() {
-            public boolean onLongClick(View v) {
-                dot.setAnimation(null);
-                WindowManager.LayoutParams params =
-                        (WindowManager.LayoutParams) mFrameLayout.getLayoutParams();
-                params.gravity = Gravity.TOP | (mIsDotAtRight ? Gravity.LEFT : Gravity.RIGHT);
-                mIsDotAtRight = !mIsDotAtRight;
-                mWindowManager.updateViewLayout(mFrameLayout, params);
-                dot.startAnimation(getDotAnimation());
-                return true;
-            }
-        });
-
-        dot.startAnimation(getDotAnimation());
-    }
-
-    private PendingIntent getStopPendingIntent() {
-        return PendingIntent.getService(this, REQUEST_CODE, getStopIntent(this),
-                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-    }
-
-    private void stopDot() {
-        mDotShowing = false;
-        final ImageView dot = (ImageView) mFrameLayout.findViewById(R.id.dot);
-        if (dot != null) {
-            dot.setAnimation(null);
-            mWindowManager.removeView(mFrameLayout);
-        }
-        Prefs.putInt(this, PREF_DOT_RIGHT, mIsDotAtRight ? 1 : 0);
-    }
-
-    private Animation getDotAnimation() {
-        Animation anim = new AlphaAnimation(0.0f, 1.0f);
-        anim.setDuration(500);
-        anim.setStartOffset(100);
-        anim.setRepeatMode(Animation.REVERSE);
-        anim.setRepeatCount(Animation.INFINITE);
-        return anim;
     }
 
     /**
