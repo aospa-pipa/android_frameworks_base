@@ -27,10 +27,17 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -->
 
+<!--
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ -->
+
 <resources>
     <bool name="config_showRsrpSignalLevelforLTE">false</bool>
     <bool name="config_alwaysShowTypeIcon">false</bool>
     <bool name="config_hideNoInternetState">false</bool>
     <bool name="config_display_volte">false</bool>
     <bool name="config_display_vowifi">false</bool>
+    <bool name="config_display_5g_a">false</bool>
 </resources>
