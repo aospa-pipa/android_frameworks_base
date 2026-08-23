@@ -23,4 +23,8 @@
 
     <!-- QS button to enable adaptive brightness -->
     <string name="accessibility_adaptive_brightness">Adaptive brightness</string>
+
+    <!-- Per-app volume panel -->
+    <string name="app_volume">App volume</string>
+    <string name="app_volume_no_active_apps">No active audio playback</string>
 </resources>
