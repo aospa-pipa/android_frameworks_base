@@ -31,7 +31,6 @@
             android:layout_height="@*android:dimen/status_bar_system_icon_size"
             android:layout_gravity="center_vertical"
             android:layout_weight="1"
-            android:layout_marginStart="-2dp"
             android:paddingEnd="3dp"
             android:src="@drawable/ic_bluetooth_battery"
             android:visibility="gone" />
