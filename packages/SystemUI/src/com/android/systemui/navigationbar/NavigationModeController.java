@@ -77,6 +77,8 @@ public class NavigationModeController implements Dumpable {
 
     private static final String OVERLAY_NAVIGATION_HIDE_HINT =
             "co.aospa.overlay.systemui.immnav.gestural";
+    private static final String OVERLAY_PIXEL_LAUNCHER_HIDE_TASKBAR =
+            "com.google.android.apps.nexuslauncher.immnav.overlay";
 
     private final ContentObserver mContentObserver = new ContentObserver(null) {
         @Override
@@ -169,6 +171,16 @@ public class NavigationModeController implements Dumpable {
             } catch (IllegalArgumentException | RemoteException e) {
                 Log.e(TAG, "Failed to " + (state ? "enable" : "disable")
                         + " overlay " + OVERLAY_NAVIGATION_HIDE_HINT + " for user " + userId, e);
+            }
+            try {
+                mOverlayManager.setEnabled(OVERLAY_PIXEL_LAUNCHER_HIDE_TASKBAR, state, userId);
+                if (state) {
+                    mOverlayManager.setHighestPriority(OVERLAY_PIXEL_LAUNCHER_HIDE_TASKBAR, userId);
+                }
+            } catch (IllegalArgumentException | RemoteException e) {
+                Log.e(TAG, "Failed to " + (state ? "enable" : "disable")
+                        + " overlay " + OVERLAY_PIXEL_LAUNCHER_HIDE_TASKBAR + " for user "
+                        + userId, e);
             }
         });
     }
