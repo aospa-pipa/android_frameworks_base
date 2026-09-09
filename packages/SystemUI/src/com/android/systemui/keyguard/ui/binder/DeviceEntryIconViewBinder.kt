@@ -33,6 +33,7 @@ import com.android.app.tracing.coroutines.launchTraced as launch
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
 import com.android.systemui.Flags
 import com.android.systemui.Flags.enableLockscreenBlur
+import com.android.systemui.common.ui.view.BackgroundBlurAlphaSync
 import com.android.systemui.common.ui.view.TouchHandlingView
 import com.android.systemui.keyguard.ui.view.DeviceEntryIconView
 import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryBackgroundViewModel
@@ -47,6 +48,7 @@ import com.android.systemui.window.domain.interactor.WindowRootViewBlurInteracto
 import com.google.android.msdl.data.model.MSDLToken
 import com.google.android.msdl.domain.MSDLPlayer
 import kotlin.math.min
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DisposableHandle
@@ -292,6 +294,24 @@ object DeviceEntryIconViewBinder {
                             bgView.removeOnLayoutChangeListener(layoutChangeListener)
                         }
 
+                        // The blur region only knows the drawable's own alpha: follow the alpha
+                        // (and visibility) the background is really drawn with - keyguard root
+                        // fade on unlock, shade drag, bgViewModel alpha, custom UDFPS icon hiding
+                        // the background - so the blur never outlives the view. This is the only
+                        // writer of the blur drawable's alpha.
+                        launch("$TAG#blurAlphaSync") {
+                            val blurAlphaSync =
+                                BackgroundBlurAlphaSync(bgView) {
+                                        bgView.background as? BackgroundBlurDrawable
+                                    }
+                                    .start()
+                            try {
+                                awaitCancellation()
+                            } finally {
+                                blurAlphaSync.dispose()
+                            }
+                        }
+
                         launch("$TAG#windowRootViewBlurInteractor.isBlurCurrentlySupported") {
                             windowRootViewBlurInteractor.isBlurCurrentlySupported.collect {
                                 isSupported ->
@@ -302,10 +322,9 @@ object DeviceEntryIconViewBinder {
 
                     launch("$TAG#bgViewModel.alpha") {
                         bgViewModel.alpha.collect { alpha ->
+                            // With lockscreen blur, BackgroundBlurAlphaSync folds this into the
+                            // blur drawable on the next frame.
                             bgView.alpha = alpha
-                            if (enableLockscreenBlur()) {
-                                bgView.background?.alpha = (255 * alpha).toInt()
-                            }
                         }
                     }
                     launch("$TAG#bgViewModel.color") {
