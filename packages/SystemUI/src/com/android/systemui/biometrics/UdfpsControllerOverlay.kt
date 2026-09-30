@@ -359,6 +359,8 @@ constructor(
         overlayTouchView = null
         overlayTouchListener = null
         listenForCurrentKeyguardState?.cancel()
+        listenForCurrentKeyguardState = null
+        addViewRunnable = null
 
         return wasShowing
     }
