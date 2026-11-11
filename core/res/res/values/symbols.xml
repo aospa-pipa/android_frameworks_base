@@ -5875,9 +5875,9 @@
   <java-symbol name="materialColorOnPrimary" type="color"/>
   <java-symbol name="materialColorOnPrimaryContainer" type="color"/>
   <java-symbol name="materialColorOnSecondary" type="color"/>
-  <java-symbol name="materialColorOnSecondaryContainer" type="color"/>
+  <java-symbol name="materialColorOnSecondaryContainer" type="color" id="0x010602c7"/>
   <java-symbol name="materialColorOnSurface" type="color"/>
-  <java-symbol name="materialColorOnSurfaceVariant" type="color"/>
+  <java-symbol name="materialColorOnSurfaceVariant" type="color" id="0x010602cb"/>
   <java-symbol name="materialColorOnTertiary" type="color"/>
   <java-symbol name="materialColorOnTertiaryContainer" type="color"/>
   <java-symbol name="materialColorOutline" type="color"/>
@@ -5893,12 +5893,12 @@
   <java-symbol name="materialColorPrimaryDim" type="color"/>
   <java-symbol name="materialColorScrim" type="color"/>
   <java-symbol name="materialColorSecondary" type="color"/>
-  <java-symbol name="materialColorSecondaryContainer" type="color"/>
+  <java-symbol name="materialColorSecondaryContainer" type="color" id="0x010602df"/>
   <java-symbol name="materialColorSecondaryDim" type="color"/>
   <java-symbol name="materialColorShadow" type="color"/>
   <java-symbol name="materialColorSurface" type="color"/>
   <java-symbol name="materialColorSurfaceBright" type="color"/>
-  <java-symbol name="materialColorSurfaceContainer" type="color"/>
+  <java-symbol name="materialColorSurfaceContainer" type="color" id="0x010602e6"/>
   <java-symbol name="materialColorSurfaceContainerHigh" type="color"/>
   <java-symbol name="materialColorSurfaceContainerHighest" type="color"/>
   <java-symbol name="materialColorSurfaceContainerLow" type="color"/>
