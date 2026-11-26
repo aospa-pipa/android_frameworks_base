@@ -20,6 +20,8 @@ import android.annotation.NonNull;
 import android.app.role.RoleManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.os.UserHandle;
 import android.text.TextUtils;
 
@@ -84,10 +86,21 @@ public final class RecentsComponentResolver {
             }
             final ComponentName component = ComponentName.unflattenFromString(
                     mapping.substring(separator + 1));
-            if (component != null) {
+            if (component != null && isAvailableRecentsActivity(context, component, userId)) {
                 return component;
             }
         }
         return fallback;
+    }
+
+    private static boolean isAvailableRecentsActivity(@NonNull Context context,
+            @NonNull ComponentName component, int userId) {
+        try {
+            final Context userContext = context.createContextAsUser(UserHandle.of(userId), 0);
+            final ActivityInfo info = userContext.getPackageManager().getActivityInfo(component, 0);
+            return info.enabled && info.applicationInfo != null && info.applicationInfo.enabled;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
     }
 }
