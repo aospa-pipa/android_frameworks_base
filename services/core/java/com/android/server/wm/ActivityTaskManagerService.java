@@ -8026,8 +8026,11 @@ public class ActivityTaskManagerService extends IActivityTaskManager.Stub {
         @Override
         public boolean switchUser(int userId, UserState userState) {
             synchronized (mGlobalLock) {
-                mRecentTasks.invalidateIsHomeRecents();
-                return mRootWindowContainer.switchUser(userId, userState);
+                final boolean switched = mRootWindowContainer.switchUser(userId, userState);
+                if (switched) {
+                    mRecentTasks.updateRecentsComponentForCurrentUser();
+                }
+                return switched;
             }
         }
 

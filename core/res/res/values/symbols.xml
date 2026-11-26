@@ -411,6 +411,7 @@
   <java-symbol type="bool" name="config_use16BitTaskSnapshotPixelFormat" />
   <java-symbol type="bool" name="config_hasRecents" />
   <java-symbol type="string" name="config_recentsComponentName" />
+  <java-symbol type="array" name="config_recentsComponentMappings" />
   <java-symbol type="string" name="config_systemUIServiceComponent" />
   <java-symbol type="string" name="config_controlsPackage" />
   <java-symbol type="string" name="config_somnambulatorComponent" />

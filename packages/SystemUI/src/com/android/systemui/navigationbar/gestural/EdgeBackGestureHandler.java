@@ -33,6 +33,8 @@ import static java.util.stream.Collectors.joining;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.ActivityManager;
+import android.app.role.OnRoleHoldersChangedListener;
+import android.app.role.RoleManager;
 import android.companion.virtualdevice.flags.Flags;
 import android.content.ComponentName;
 import android.content.Context;
@@ -54,6 +56,7 @@ import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.Trace;
+import android.os.UserHandle;
 import android.provider.DeviceConfig;
 import android.util.ArraySet;
 import android.util.DisplayMetrics;
@@ -77,6 +80,7 @@ import androidx.annotation.DimenRes;
 
 import com.android.internal.config.sysui.SystemUiDeviceConfigFlags;
 import com.android.internal.policy.GestureNavigationSettingsObserver;
+import com.android.internal.util.RecentsComponentResolver;
 import com.android.systemui.LauncherProxyService;
 import com.android.systemui.contextualeducation.GestureType;
 import com.android.systemui.dagger.qualifiers.Background;
@@ -199,6 +203,9 @@ public class EdgeBackGestureHandler {
 
     private final Context mContext;
     private final UserTracker mUserTracker;
+    private final RoleManager mRoleManager;
+    private final OnRoleHoldersChangedListener mRecentsRoleChangedListener;
+    private boolean mRecentsRoleListenerRegistered;
     private final LauncherProxyService mLauncherProxyService;
     private final SysUiState mSysUiState;
     private Runnable mStateChangeCallback;
@@ -231,6 +238,7 @@ public class EdgeBackGestureHandler {
     private final Provider<LightBarController> mLightBarControllerProvider;
 
     private final GestureInteractor mGestureInteractor;
+    private final ArraySet<ComponentName> mRecentsBlockedComponents = new ArraySet<>();
     private final ArraySet<ComponentName> mBlockedActivities = new ArraySet<>();
     private Job mBlockedActivitiesJob = null;
 
@@ -378,6 +386,7 @@ public class EdgeBackGestureHandler {
             new UserTracker.Callback() {
                 @Override
                 public void onUserChanged(int newUser, @NonNull Context userContext) {
+                    updateRecentsGestureBlockingActivities(newUser);
                     updateIsEnabled();
                     updateCurrentUserResources();
                 }
@@ -477,6 +486,14 @@ public class EdgeBackGestureHandler {
         mBackgroundExecutor = backgroundExecutor;
         mBgHandler = bgHandler;
         mUserTracker = userTracker;
+        mRoleManager = context.getSystemService(RoleManager.class);
+        mRecentsRoleChangedListener = (roleName, user) -> {
+            if (RoleManager.ROLE_HOME.equals(roleName)
+                    && user.getIdentifier() == mUserTracker.getUserId()) {
+                mUiThreadContext.getExecutor().execute(() ->
+                        updateRecentsGestureBlockingActivities(mUserTracker.getUserId()));
+            }
+        };
         mLauncherProxyService = launcherProxyService;
         mSysUiState = sysUiState;
         mNavigationModeController = navigationModeController;
@@ -497,39 +514,7 @@ public class EdgeBackGestureHandler {
         mDisplayBackGestureHandlerFactory = displayBackGestureHandlerFactory;
         mDesktopState = desktopState;
 
-        ComponentName recentsComponentName = ComponentName.unflattenFromString(
-                context.getString(com.android.internal.R.string.config_recentsComponentName));
-        if (recentsComponentName != null) {
-            String recentsPackageName = recentsComponentName.getPackageName();
-            PackageManager manager = context.getPackageManager();
-            try {
-                Resources resources = manager.getResourcesForApplication(
-                        manager.getApplicationInfo(recentsPackageName,
-                                PackageManager.MATCH_UNINSTALLED_PACKAGES
-                                        | PackageManager.MATCH_DISABLED_COMPONENTS
-                                        | PackageManager.GET_SHARED_LIBRARY_FILES));
-                int resId = resources.getIdentifier(
-                        "back_gesture_blocking_activities", "array", recentsPackageName);
-
-                if (resId == 0) {
-                    Log.e(TAG, "No resource found for gesture-blocking activities");
-                } else {
-                    String[] gestureBlockingActivities = resources.getStringArray(resId);
-                    for (String gestureBlockingActivity : gestureBlockingActivities) {
-                        final ComponentName component =
-                                ComponentName.unflattenFromString(gestureBlockingActivity);
-
-                        if (component != null) {
-                            mGestureInteractor.addGestureBlockedMatcher(
-                                    new TaskMatcher.TopActivityComponent(component),
-                                    GestureInteractor.Scope.Local);
-                        }
-                    }
-                }
-            } catch (NameNotFoundException e) {
-                Log.e(TAG, "Failed to add gesture blocking activities", e);
-            }
-        }
+        updateRecentsGestureBlockingActivities(mUserTracker.getUserId());
         mLongPressTimeout = Math.min(MAX_LONG_PRESS_TIMEOUT,
                 Flags.viewconfigurationApis()
                         ? ViewConfiguration.get(context).getLongPressTimeoutMillis()
@@ -541,6 +526,43 @@ public class EdgeBackGestureHandler {
 
         updateCurrentUserResources();
         mTopUiController = topUiController;
+    }
+
+    private void updateRecentsGestureBlockingActivities(int userId) {
+        for (ComponentName component : mRecentsBlockedComponents) {
+            mGestureInteractor.removeGestureBlockedMatcher(
+                    new TaskMatcher.TopActivityComponent(component),
+                    GestureInteractor.Scope.Local);
+        }
+        mRecentsBlockedComponents.clear();
+
+        final ComponentName recentsComponent = RecentsComponentResolver.resolve(mContext, userId);
+        final String recentsPackageName = recentsComponent.getPackageName();
+        final PackageManager manager = mContext.getPackageManager();
+        try {
+            final Resources resources = manager.getResourcesForApplication(
+                    manager.getApplicationInfo(recentsPackageName,
+                            PackageManager.MATCH_UNINSTALLED_PACKAGES
+                                    | PackageManager.MATCH_DISABLED_COMPONENTS
+                                    | PackageManager.GET_SHARED_LIBRARY_FILES));
+            final int resId = resources.getIdentifier(
+                    "back_gesture_blocking_activities", "array", recentsPackageName);
+            if (resId == 0) {
+                Log.e(TAG, "No resource found for gesture-blocking activities in "
+                        + recentsPackageName);
+                return;
+            }
+            for (String activity : resources.getStringArray(resId)) {
+                final ComponentName component = ComponentName.unflattenFromString(activity);
+                if (component != null && mRecentsBlockedComponents.add(component)) {
+                    mGestureInteractor.addGestureBlockedMatcher(
+                            new TaskMatcher.TopActivityComponent(component),
+                            GestureInteractor.Scope.Local);
+                }
+            }
+        } catch (NameNotFoundException e) {
+            Log.e(TAG, "Failed to add gesture blocking activities for " + recentsPackageName, e);
+        }
     }
 
     public void setStateChangeCallback(Runnable callback) {
@@ -637,6 +659,11 @@ public class EdgeBackGestureHandler {
             mInputDeviceListener.onInputDeviceAdded(inputDeviceId);
         }
         updateIsEnabled();
+        if (mRoleManager != null && !mRecentsRoleListenerRegistered) {
+            mRoleManager.addOnRoleHoldersChangedListenerAsUser(mContext.getMainExecutor(),
+                    mRecentsRoleChangedListener, UserHandle.ALL);
+            mRecentsRoleListenerRegistered = true;
+        }
         mUserTracker.addCallback(mUserChangedCallback, mUiThreadContext.getExecutor());
     }
 
@@ -651,6 +678,11 @@ public class EdgeBackGestureHandler {
         mTrackpadsConnected.clear();
         updateIsEnabled();
         mUserTracker.removeCallback(mUserChangedCallback);
+        if (mRoleManager != null && mRecentsRoleListenerRegistered) {
+            mRoleManager.removeOnRoleHoldersChangedListenerAsUser(
+                    mRecentsRoleChangedListener, UserHandle.ALL);
+            mRecentsRoleListenerRegistered = false;
+        }
     }
 
     /**

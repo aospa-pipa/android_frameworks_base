@@ -3963,6 +3963,11 @@
     <string name="config_recentsComponentName" translatable="false"
             >com.android.launcher3/com.android.quickstep.RecentsActivity</string>
 
+    <!-- Maps a default home package to its recents activity component. -->
+    <string-array name="config_recentsComponentMappings" translatable="false">
+        <item>com.android.launcher3|com.android.launcher3/com.android.quickstep.RecentsActivity</item>
+    </string-array>
+
     <!-- SystemUi service component -->
     <string name="config_systemUIServiceComponent" translatable="false"
             >com.android.systemui/com.android.systemui.SystemUIService</string>

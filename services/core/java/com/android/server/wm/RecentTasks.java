@@ -53,6 +53,7 @@ import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.app.ActivityTaskManager;
 import android.app.AppGlobals;
+import android.app.role.RoleManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -70,7 +71,6 @@ import android.os.Process;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.UserHandle;
-import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.IntArray;
 import android.util.Slog;
@@ -86,6 +86,7 @@ import android.view.WindowManagerPolicyConstants.PointerEventListener;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.protolog.ProtoLog;
+import com.android.internal.util.RecentsComponentResolver;
 import com.android.server.am.ActivityManagerService;
 import com.android.server.wm.utils.OptPropFactory;
 
@@ -179,6 +180,7 @@ class RecentTasks {
      */
     private int mRecentsUid = -1;
     private ComponentName mRecentsComponent = null;
+    private boolean mRecentsRoleListenerRegistered;
     @Nullable
     private String mFeatureId;
 
@@ -421,25 +423,52 @@ class RecentTasks {
                 : -1;
     }
 
-    /**
-     * Loads the static recents component.  This is called after the system is ready, but before
-     * any dependent services (like SystemUI) is started.
-     */
+    /** Loads the recents component and begins tracking default home changes. */
     void loadRecentsComponent(Resources res) {
-        final String rawRecentsComponent = res.getString(
-                com.android.internal.R.string.config_recentsComponentName);
-        if (TextUtils.isEmpty(rawRecentsComponent)) {
-            return;
+        updateRecentsComponentForCurrentUser();
+        if (!mRecentsRoleListenerRegistered) {
+            final RoleManager roleManager = mService.mContext.getSystemService(RoleManager.class);
+            if (roleManager != null) {
+                roleManager.addOnRoleHoldersChangedListenerAsUser(
+                        mService.mContext.getMainExecutor(), (roleName, user) -> {
+                            if (!RoleManager.ROLE_HOME.equals(roleName)) {
+                                return;
+                            }
+                            final int changedUserId = user.getIdentifier();
+                            final ComponentName recentsComponent =
+                                    RecentsComponentResolver.resolve(mService.mContext,
+                                            changedUserId);
+                            synchronized (mService.mGlobalLock) {
+                                if (changedUserId
+                                        != mService.mRootWindowContainer.mCurrentUser) {
+                                    return;
+                                }
+                                updateRecentsComponent(recentsComponent, changedUserId);
+                                invalidateIsHomeRecents();
+                            }
+                        }, UserHandle.ALL);
+                mRecentsRoleListenerRegistered = true;
+            }
         }
+    }
 
-        final ComponentName cn = ComponentName.unflattenFromString(rawRecentsComponent);
+    void updateRecentsComponentForCurrentUser() {
+        final int userId = mService.mRootWindowContainer.mCurrentUser;
+        updateRecentsComponent(RecentsComponentResolver.resolve(mService.mContext, userId),
+                userId);
+        invalidateIsHomeRecents();
+    }
+
+    private void updateRecentsComponent(ComponentName cn, int userId) {
+        mRecentsComponent = null;
+        mRecentsUid = -1;
         if (cn != null) {
             try {
                 final ApplicationInfo appInfo = AppGlobals.getPackageManager().getApplicationInfo(
                         cn.getPackageName(),
                         PackageManager.MATCH_UNINSTALLED_PACKAGES
                                 | PackageManager.MATCH_DISABLED_COMPONENTS,
-                        mService.mContext.getUserId());
+                        userId);
                 if (appInfo != null) {
                     mRecentsUid = appInfo.uid;
                     mRecentsComponent = cn;

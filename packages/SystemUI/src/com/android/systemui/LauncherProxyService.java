@@ -46,6 +46,8 @@ import static com.android.window.flags.Flags.betterDeskDeactivationInRecentsTran
 import android.annotation.FloatRange;
 import android.annotation.Nullable;
 import android.app.ActivityTaskManager;
+import android.app.role.OnRoleHoldersChangedListener;
+import android.app.role.RoleManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -63,7 +65,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.IRemoteCallback;
 import android.os.Looper;
-import android.os.PatternMatcher;
 import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.SystemClock;
@@ -91,6 +92,7 @@ import com.android.internal.app.IVoiceInteractionSessionListener;
 import com.android.internal.logging.UiEventLogger;
 import com.android.internal.util.ScreenshotHelper;
 import com.android.internal.util.ScreenshotRequest;
+import com.android.internal.util.RecentsComponentResolver;
 import com.android.systemui.LauncherProxyService.LauncherProxyListener;
 import com.android.systemui.broadcast.BroadcastDispatcher;
 import com.android.systemui.contextualeducation.GestureType;
@@ -183,7 +185,7 @@ public class LauncherProxyService implements CallbackController<LauncherProxyLis
 
     private final Runnable mConnectionRunnable = () ->
             internalConnectToCurrentUser("runnable: startConnectionToCurrentUser");
-    private final ComponentName mRecentsComponentName;
+    private ComponentName mRecentsComponentName;
     private final List<LauncherProxyListener> mConnectionCallbacks = new ArrayList<>();
     private final Intent mQuickStepIntent;
     private final ScreenshotHelper mScreenshotHelper;
@@ -586,6 +588,11 @@ public class LauncherProxyService implements CallbackController<LauncherProxyLis
     private final BroadcastReceiver mLauncherStateChangedReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            final String packageName = intent.getData() != null
+                    ? intent.getData().getSchemeSpecificPart() : null;
+            if (!Objects.equals(packageName, mRecentsComponentName.getPackageName())) {
+                return;
+            }
             // If adding, bind immediately
             if (Objects.equals(intent.getAction(), ACTION_PACKAGE_ADDED)) {
                 updateEnabledAndBinding();
@@ -599,8 +606,7 @@ public class LauncherProxyService implements CallbackController<LauncherProxyLis
             }
 
             // Only rebind for TouchInteractionService component from launcher
-            ResolveInfo ri = context.getPackageManager()
-                    .resolveService(new Intent(ACTION_QUICKSTEP), 0);
+            ResolveInfo ri = context.getPackageManager().resolveService(mQuickStepIntent, 0);
             if (ri == null) {
                 return;
             }
@@ -738,10 +744,16 @@ public class LauncherProxyService implements CallbackController<LauncherProxyLis
                             && newUser == mCurrentBoundedUserId) {
                         return;
                     }
+                    final ComponentName recentsComponent = RecentsComponentResolver.resolve(
+                            userContext, newUser);
+                    mRecentsComponentName = recentsComponent;
+                    mQuickStepIntent.setPackage(recentsComponent.getPackageName());
                     mConnectionBackoffAttempts = 0;
                     internalConnectToCurrentUser("User changed");
                 }
             };
+
+    private final OnRoleHoldersChangedListener mRoleHoldersChangedListener;
 
     private final SysUiStateCallback mSysUiStateCallback =
             new SysUiStateCallback() {
@@ -811,10 +823,28 @@ public class LauncherProxyService implements CallbackController<LauncherProxyLis
         mShadeExpansionTargetDisplayInteractor = shadeExpansionTargetDisplayInteractor;
         mUserTracker = userTracker;
         mConnectionBackoffAttempts = 0;
-        mRecentsComponentName = ComponentName.unflattenFromString(context.getString(
-                com.android.internal.R.string.config_recentsComponentName));
+        mRecentsComponentName = RecentsComponentResolver.resolve(context,
+                mUserTracker.getUserId());
         mQuickStepIntent = new Intent(ACTION_QUICKSTEP)
                 .setPackage(mRecentsComponentName.getPackageName());
+        mRoleHoldersChangedListener = (roleName, user) -> {
+            if (!RoleManager.ROLE_HOME.equals(roleName)
+                    || user.getIdentifier() != mUserTracker.getUserId()) {
+                return;
+            }
+            mHandler.post(() -> {
+                final ComponentName recentsComponent = RecentsComponentResolver.resolve(
+                        mContext, mUserTracker.getUserId());
+                if (Objects.equals(recentsComponent, mRecentsComponentName)) {
+                    return;
+                }
+                Log.i(TAG_OPS, "Recents component changed to " + recentsComponent);
+                mRecentsComponentName = recentsComponent;
+                mQuickStepIntent.setPackage(recentsComponent.getPackageName());
+                mConnectionBackoffAttempts = 0;
+                updateEnabledAndBinding();
+            });
+        };
         mPerDisplaySysUiStateRepository = perDisplaySysUiStateRepository;
         mDisplayRepository = displayRepository;
         mDefaultDisplaySysUIState = perDisplaySysUiStateRepository.get(Display.DEFAULT_DISPLAY);
@@ -841,10 +871,14 @@ public class LauncherProxyService implements CallbackController<LauncherProxyLis
         // Listen for launcher package changes
         IntentFilter filter = new IntentFilter(Intent.ACTION_PACKAGE_ADDED);
         filter.addDataScheme("package");
-        filter.addDataSchemeSpecificPart(mRecentsComponentName.getPackageName(),
-                PatternMatcher.PATTERN_LITERAL);
         filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
         mContext.registerReceiver(mLauncherStateChangedReceiver, filter);
+
+        final RoleManager roleManager = context.getSystemService(RoleManager.class);
+        if (roleManager != null) {
+            roleManager.addOnRoleHoldersChangedListenerAsUser(mMainExecutor,
+                    mRoleHoldersChangedListener, UserHandle.ALL);
+        }
 
         mBroadcastDispatcher.registerReceiver(mUserEventReceiver,
                 new IntentFilter(Intent.ACTION_USER_UNLOCKED),

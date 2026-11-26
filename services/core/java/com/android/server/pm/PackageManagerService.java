@@ -210,6 +210,7 @@ import com.android.internal.util.DumpUtils;
 import com.android.internal.util.FrameworkStatsLog;
 import com.android.internal.util.FunctionalUtils;
 import com.android.internal.util.Preconditions;
+import com.android.internal.util.RecentsComponentResolver;
 import com.android.modules.utils.TypedXmlPullParser;
 import com.android.modules.utils.TypedXmlSerializer;
 import com.android.permission.persistence.RuntimePermissionsPersistence;
@@ -988,6 +989,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
     final @Nullable String mRetailDemoPackage;
     final @Nullable String mOverlayConfigSignaturePackage;
     final @Nullable String mRecentsPackage;
+    final @NonNull String[] mRecentsPackages;
     final @Nullable String mAmbientContextDetectionPackage;
     final @Nullable String mWearableSensingPackage;
     final @NonNull Set<String> mInitialNonStoppedSystemPackages;
@@ -1967,6 +1969,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
         mSystemTextClassifierPackageName = testParams.systemTextClassifierPackage;
         mRetailDemoPackage = testParams.retailDemoPackage;
         mRecentsPackage = testParams.recentsPackage;
+        mRecentsPackages = mRecentsPackage == null ? new String[0] : new String[]{mRecentsPackage};
         mAmbientContextDetectionPackage = testParams.ambientContextDetectionPackage;
         mWearableSensingPackage = testParams.wearableSensingPackage;
         mConfiguratorPackage = testParams.configuratorPackage;
@@ -2402,6 +2405,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
                     mInjector.getSystemConfig().getOverlayConfigSignaturePackage());
             mRecentsPackage = ensureSystemPackageName(computer,
                     getPackageFromComponentString(R.string.config_recentsComponentName));
+            mRecentsPackages = RecentsComponentResolver.getConfiguredRecentsPackages(mContext);
             mAmbientContextDetectionPackage = ensureSystemPackageName(computer,
                     getPackageFromComponentString(
                             R.string.config_defaultAmbientContextDetectionService));
@@ -7177,7 +7181,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
                     COMPANION_PACKAGE_NAME,
                     mRetailDemoPackage,
                     mOverlayConfigSignaturePackage,
-                    mRecentsPackage,
+                    mRecentsPackages,
                     mDeveloperVerificationServiceProvider == null
                             ? null : mDeveloperVerificationServiceProvider.getPackageName());
             final ArrayMap<String, FeatureInfo> availableFeatures;
@@ -8545,7 +8549,7 @@ public class PackageManagerService implements PackageSender, TestUtilityService 
                 COMPANION_PACKAGE_NAME,
                 mRetailDemoPackage,
                 mOverlayConfigSignaturePackage,
-                mRecentsPackage,
+                mRecentsPackages,
                 mDeveloperVerificationServiceProvider == null
                         ? null : mDeveloperVerificationServiceProvider.getPackageName())
                 .getKnownPackageNames(snapshot, knownPackage, userId);

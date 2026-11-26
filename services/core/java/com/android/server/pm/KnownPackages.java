@@ -97,7 +97,7 @@ public final class KnownPackages {
     private final String mCompanionPackage;
     private final String mRetailDemoPackage;
     private final String mOverlayConfigSignaturePackage;
-    private final String mRecentsPackage;
+    private final String[] mRecentsPackages;
     private final String mDeveloperVerificationServiceProviderPackage;
 
     KnownPackages(DefaultAppProvider defaultAppProvider, String requiredInstallerPackage,
@@ -107,7 +107,8 @@ public final class KnownPackages {
             String configuratorPackage, String incidentReportApproverPackage,
             String ambientContextDetectionPackage, String wearableSensingPackage,
             String appPredictionServicePackage, String companionPackageName,
-            String retailDemoPackage, String overlayConfigSignaturePackage, String recentsPackage,
+            String retailDemoPackage, String overlayConfigSignaturePackage,
+            String[] recentsPackages,
             String developerVerificationServiceProviderPackage) {
         mDefaultAppProvider = defaultAppProvider;
         mRequiredInstallerPackage = requiredInstallerPackage;
@@ -125,7 +126,7 @@ public final class KnownPackages {
         mCompanionPackage = companionPackageName;
         mRetailDemoPackage = retailDemoPackage;
         mOverlayConfigSignaturePackage = overlayConfigSignaturePackage;
-        mRecentsPackage = recentsPackage;
+        mRecentsPackages = recentsPackages;
         mDeveloperVerificationServiceProviderPackage = developerVerificationServiceProviderPackage;
     }
 
@@ -222,7 +223,7 @@ public final class KnownPackages {
             case PACKAGE_OVERLAY_CONFIG_SIGNATURE:
                 return snapshot.filterOnlySystemPackages(mOverlayConfigSignaturePackage);
             case PACKAGE_RECENTS:
-                return snapshot.filterOnlySystemPackages(mRecentsPackage);
+                return snapshot.filterOnlySystemPackages(mRecentsPackages);
             case PACKAGE_DEVELOPER_VERIFICATION_SERVICE_PROVIDER:
                 return snapshot.filterOnlySystemPackages(
                         mDeveloperVerificationServiceProviderPackage);
